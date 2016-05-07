@@ -1,0 +1,197 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+```
+# How does Climate impact on Society: a quantitative analysis of the NOAA storm database in the last half century.
+### Author: Giuseppe Di Bernardo
+
+## Synopsis
+
+Climate change could affect our society through impacts on a number of different social, cultural, and natural resources. For example, climate change could affect human health, infrastructure, and transportation systems, as well as energy, food, and water supplies.
+We explore the U.S. National Oceanic and Atmospheric Administration's Analysis (NOAA, [http://www.noaa.gov](http://www.noaa.gov)) public storm database with the aim to address two fundamental questions: 1) what are the most catastrophic wheater events with respect to population health? and 2) what do they imply in terms of economic consequences?
+One of our main conclusions is that the impact on humans, be it injuries or fatalities, is not directly correlated to the ecomomic damage weather events cause. Tornado's are by far the highest cause for injuries and deaths (#1). In economic damages, Flooding cases, with Tornado's being the third ranked cases.  
+
+## Data Processing
+
+#### 1. Loading data and libraries 
+Firstly, let us load the data ```(i.e. read.csv())```, and any necessary R packages to perform computation, and plotting the data ```(i.e. library(ggplot2))```
+
+```{r, echo=TRUE, results='hide',warning=FALSE,message=FALSE, cache = TRUE}
+# Let's set working directory
+library(ggplot2)
+data.dir <- "." 
+setwd <- data.dir
+
+# 1. Check if file exists, and download file 
+filename <- "repdata-data-StormData.csv"
+
+if(!file.exists(filename)){
+  fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+  download.file(fileUrl, destfile = filename, method = "curl")
+  dateDownloaded <- date() # record the download date
+   if(!file.exists(data.dir)){
+    unzip(filename, exdir = ".")  
+   }
+  data.dir
+}
+
+# 2. Load the data (i.e. read.csv())
+if(!exists("repdata-data-StormData.csv")){
+  NOAA_rawdata <- read.csv(file = 'repdata-data-StormData.csv', 
+                           head = TRUE, sep = ",")
+}
+
+# a quick look through the data
+head(NOAA_rawdata)
+```
+
+#### 2. Exploring the impact Fatalities and Injuries
+We first want to address the impact of natural disasters on human health, in terms of number of fatalities and injuries across the USA. 
+
+```{r, echo = TRUE, cache=TRUE}
+# EVTYPE is the variable which indicates the type of weather events in the dataset
+Fatalities_byEvent <- aggregate(FATALITIES ~ EVTYPE, NOAA_rawdata, sum, na.rm = TRUE)
+Injuries_byEvent <- aggregate(INJURIES ~ EVTYPE, NOAA_rawdata, sum, na.rm = TRUE)
+Harmeful_to_Health <- cbind(Fatalities_byEvent, Injuries_byEvent$INJURIES)
+names(Harmeful_to_Health) <- c("Type of Events", "Fatality Cases", "Injury Cases")
+Harmeful_to_Health <- Harmeful_to_Health[order(Harmeful_to_Health$`Fatality Cases`, 
+                                               Harmeful_to_Health$`Injury Cases`, 
+                                               decreasing = TRUE),]
+
+```
+
+Then, being interested in the dameages provocated to the american economy, we furthermore investigate which type of natural events are the most harmful to the population, this time from a financial perspective. 
+We preliminarly need to format the variables PROPDMGEXP and CROPDMGEXP, present in our dataset. 
+To this purpose, we have written the following two functions, 
+
+* Power_of_Ten: 
+
+
+```{r, echo=TRUE}
+Power_of_Ten <- function(x){
+  
+  if (is.numeric(x)) {
+    x <- x
+  }
+  
+  else if (grepl("h", x, ignore.case = TRUE)) {
+    x <- 2
+  }
+  
+  else if (grepl("k", x, ignore.case = TRUE)) {
+    x <- 3
+  }
+  
+  else if (grepl("m", x, ignore.case = TRUE)) {
+    x <- 6
+  }
+  
+  else if (grepl("b", x, ignore.case = TRUE)) {
+    x <- 9
+  }
+  
+  else if (x == "" || x == " ") {
+    x <- 0
+  }
+  
+  else {
+    x <- NA
+  }
+  
+  x
+
+}
+```
+which converts symbols to a power of $10$, and
+
+* Raise_to_Power_of_Ten:
+
+```{r, echo=TRUE}
+Raise_to_Power_of_Ten <- function(value, exp) {
+  
+  pow <- Power_of_Ten(exp)
+  if(is.numeric(value)) {
+    value <- value * (10^pow)
+  }
+  
+  if(!is.numeric(value)) {
+    value <- 0
+  }
+  
+  value
+  
+}
+```
+which handle the exponent value of the above variables. 
+Below the chunck of code used to study the effects of weather events on the american economy in the last half century. 
+
+```{r, echo=TRUE, cache=TRUE}
+NOAA_rawdata$PROPDMG_new <- mapply(Raise_to_Power_of_Ten, NOAA_rawdata$PROPDMG, 
+                                   NOAA_rawdata$PROPDMGEXP)
+NOAA_rawdata$CROPDMG_new <- mapply(Raise_to_Power_of_Ten, NOAA_rawdata$CROPDMG, 
+                                   NOAA_rawdata$CROPDMGEXP)
+
+PropertyDamage_byEvent <- aggregate(PROPDMG_new ~ EVTYPE, NOAA_rawdata, sum, na.rm = TRUE)
+CropDamage_byEvent <- aggregate(CROPDMG_new ~ EVTYPE, NOAA_rawdata, sum, na.rm = TRUE)
+Damage_to_Economy <- cbind(PropertyDamage_byEvent, CropDamage_byEvent$CROPDMG)
+names(Damage_to_Economy) <- c("Type of Events", "Property Damages", "Crop Damages")
+Damage_to_Economy <- Damage_to_Economy[order(Damage_to_Economy$`Property Damages`, 
+                                               Damage_to_Economy$`Crop Damages`, 
+                                               decreasing = TRUE),]
+```
+
+## Results 
+#### 1. Deaths and Injuries across USA. 
+
+We can now show results we got for what concerns the impact of climate events on the human health, focysing the attention to the to the top 10 cases of fatalities, 
+
+```{r, echo = TRUE}
+HealthImpact_top10 <- Harmeful_to_Health[1:10, ]
+
+g <- ggplot(data = HealthImpact_top10, aes(x = reorder(`Type of Events`, 
+                                                       -`Fatality Cases`), 
+                                           y = `Fatality Cases`, 
+                                           fill = `Fatality Cases`)) 
+
+g <- g + geom_bar(stat = "identity")
+g <- g + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+g <- g + xlab("Natural Weather Events") 
+g <- g + ylab('Total number of fatality cases across USA')
+print(g)
+```
+
+... and injuries, respectively occurred across USA since c.a. 1950
+```{r, echo=TRUE}
+p <- ggplot(data = HealthImpact_top10, aes(x = reorder(`Type of Events`, 
+                                                       -`Injury Cases`), 
+                                           y = `Injury Cases`, 
+                                           fill = `Injury Cases`)) 
+
+p <- p + geom_bar(stat = "identity")
+p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+p <- p + xlab("Natural Weather Events") 
+p <- p + ylab('Total number of injuries cases across USA')
+print(p)
+```
+
+By looking at the two plots, we confirm that Tornado's are by far the first natural disaster, having caused the largest number of deaths and injuries across all states of the country since almost 1950. However, also Heat events have played a major role in the number of deaths in the last years. 
+
+#### 2. Economic Damage
+Instead, Flooding events turn be out the cases with the highest impact on the total economic cost, with almost 150 billions of USD lost due to the damages to properties and crops across USA, as illustrated in the final plot of our analysis.  
+
+
+```{r, echo=TRUE}
+Damage_to_Economy_top10 <- Damage_to_Economy[1:10, ]
+
+p <- ggplot(data = Damage_to_Economy_top10, aes(x = reorder(`Type of Events`, 
+                                                    -(`Crop Damages` + `Property Damages`)), 
+                                                y = (`Crop Damages` + `Property Damages`)/1.e9,
+                                                fill = (`Crop Damages` + `Property Damages`)/1.e9)) 
+
+p <- p + scale_fill_continuous((guide = guide_legend(title = "Billions of $")))
+p <- p + geom_bar(stat = "identity")
+p <- p + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+p <- p + xlab("Natural Weather Events") 
+p <- p + ylab('Damages to Properties and Crops, in billions of $')
+print(p)
+```
+
